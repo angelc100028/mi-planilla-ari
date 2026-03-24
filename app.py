@@ -1,59 +1,91 @@
 import streamlit as st
 
-# Configuración de página para Móvil
-st.set_page_config(page_title="Planilla ARI Digital", page_icon="📊")
+# 1. CONFIGURACIÓN DE PÁGINA Y PARCHE DE PRIVACIDAD
+st.set_page_config(page_title="Planilla ARI - Calculadora", page_icon="📝", layout="centered")
 
-st.title("📊 Calculadora ARI (ISLR)")
-st.write("Complete los datos para calcular su porcentaje de retención.")
+# CSS para ocultar el botón de GitHub, el menú de Streamlit y el pie de página
+hide_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .viewerBadge_container__1QS1h {display: none;}
+    </style>
+"""
+st.markdown(hide_style, unsafe_allow_html=True)
 
-# --- ENTRADA DE DATOS ---
-with st.expander("1. Datos de Remuneración", expanded=True):
-    ut_valor = st.number_input("Valor de la Unidad Tributaria (Bs.)", value=0.02, format="%.4f")
-    remuneracion = st.number_input("Remuneración Total Estimada (Anual)", min_value=0.0, step=1000.0)
+# 2. TÍTULO Y PRESENTACIÓN
+st.title("📲 Planilla ARI Digital")
+st.subheader("Cálculo de Porcentaje de Retención (ISLR)")
+st.write("Herramienta interactiva para la estimación de retención salarial.")
 
-with st.expander("2. Desgravámenes y Cargas"):
-    tipo_desgravamen = st.radio("Tipo de Desgravamen", ["Único (774 UT)", "Detallado"])
-    if tipo_desgravamen == "Único (774 UT)":
-        monto_desgravamen = 774 * ut_valor
-    else:
-        monto_desgravamen = st.number_input("Monto Desgravamen Detallado", min_value=0.0)
+# 3. ENTRADA DE DATOS (Interactivo para móvil)
+st.info("Complete los campos a continuación:")
+
+with st.container():
+    # Valor de la UT (Variable según el año actual)
+    ut_valor = st.number_input("Valor de la UT Vigente (Bs.)", value=0.40, format="%.2f", help="Ajuste el valor según la Gaceta Oficial vigente.")
     
-    cargas_familiares = st.number_input("Número de Cargas Familiares (10 UT c/u)", min_value=0, step=1)
+    # Remuneración
+    remuneracion = st.number_input("Remuneración Total Estimada para el Año (Bs.)", min_value=0.0, step=1000.0)
+    
+    # Cargas Familiares
+    cargas = st.number_input("Número de Cargas Familiares (Ascendientes/Descendientes)", min_value=0, max_value=20, step=1)
 
-# --- LÓGICA DE CÁLCULO (Basada en tu Excel) ---
-enriquecimiento_neto = max(0.0, remuneracion - monto_desgravamen)
+    # Desgravamen
+    des_tipo = st.selectbox("Tipo de Desgravamen", ["Único (774 UT)", "Detallado (Soportado)"])
+    if des_tipo == "Único (774 UT)":
+        des_monto = 774 * ut_valor
+    else:
+        des_monto = st.number_input("Monto Total de Desgravámenes Detallados (Bs.)", min_value=0.0)
+
+# 4. LÓGICA DE CÁLCULO FISCAL
+enriquecimiento_neto = max(0.0, remuneracion - des_monto)
 enriquecimiento_ut = enriquecimiento_neto / ut_valor
 
-# Escala de ISLR (Tarifa 1) extraída de tu planilla
+# Tabla de Tarifas (Tarifa 1 - Personas Naturales)
 if enriquecimiento_ut <= 1000:
-    porcentaje = 0.06; sustraendo = 0
+    p = 0.06; s = 0
 elif enriquecimiento_ut <= 1500:
-    porcentaje = 0.09; sustraendo = 30
+    p = 0.09; s = 30
 elif enriquecimiento_ut <= 2000:
-    porcentaje = 0.12; sustraendo = 75
+    p = 0.12; s = 75
 elif enriquecimiento_ut <= 2500:
-    porcentaje = 0.16; sustraendo = 155
+    p = 0.16; s = 155
 elif enriquecimiento_ut <= 3000:
-    porcentaje = 0.20; sustraendo = 255
+    p = 0.20; s = 255
 elif enriquecimiento_ut <= 4500:
-    porcentaje = 0.24; sustraendo = 375
+    p = 0.24; s = 375
 elif enriquecimiento_ut <= 6000:
-    porcentaje = 0.29; sustraendo = 600
+    p = 0.29; s = 600
 else:
-    porcentaje = 0.34; sustraendo = 900
+    p = 0.34; s = 900
 
-# Cálculo Final
-impuesto_estimado_ut = (enriquecimiento_ut * porcentaje) - sustraendo
-impuesto_con_cargas_ut = max(0.0, impuesto_estimado_ut - (cargas_familiares * 10) - 10) # 10 UT adicionales por el contribuyente
-porcentaje_retencion = (impuesto_con_cargas_ut / enriquecimiento_ut * 100) if enriquecimiento_ut > 0 else 0
+# Cálculo final del impuesto
+impuesto_bruto_ut = (enriquecimiento_ut * p) - s
+rebaja_personal = 10 # 10 UT por ser persona natural
+rebaja_familia = cargas * 10
+impuesto_neto_ut = max(0.0, impuesto_bruto_ut - rebaja_personal - rebaja_familia)
 
-# --- RESULTADOS (Diseño Responsivo) ---
+# Porcentaje de Retención Final
+if enriquecimiento_neto > 0:
+    porcentaje_final = (impuesto_neto_ut * ut_valor / remuneracion) * 100
+else:
+    porcentaje_final = 0.0
+
+# 5. RESULTADOS VISUALES
 st.divider()
-col1, col2 = st.columns(2)
-col1.metric("Enriquecimiento (UT)", f"{enriquecimiento_ut:,.2f}")
-col2.metric("Porcentaje de Retención", f"{porcentaje_retencion:.2f}%")
+st.write("### Resultado de la Estimación:")
 
-if porcentaje_retencion > 0:
-    st.success(f"Usted debe aplicar un porcentaje de retención del **{porcentaje_retencion:.2f}%**")
+col1, col2 = st.columns(2)
+with col1:
+    st.metric("Base Gravable (UT)", f"{enriquecimiento_ut:,.2f}")
+with col2:
+    st.metric("Porcentaje de Retención", f"{porcentaje_final:.2f} %")
+
+if porcentaje_final > 0:
+    st.success(f"Usted debe declarar un **{porcentaje_final:.2f}%** de retención.")
 else:
-    st.info("Su enriquecimiento no alcanza el mínimo tributable.")
+    st.warning("Su nivel de ingresos no genera retención de ISLR para los parámetros ingresados.")
+
+st.caption("Nota: Esta calculadora es una herramienta de apoyo y no sustituye la asesoría legal o contable formal.")
